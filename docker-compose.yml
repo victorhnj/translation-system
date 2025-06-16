@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"       # Porta da fila
+      - "15672:15672"     # Painel de administração
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+      
+    deploy:
+      resources:
+        limits:
+          memory: 1024M                          # Aumenta o limite de memória (1GB)
+
+  translation-api:
+    build: ./translation-api
+    container_name: translation-api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - rabbitmq
+    volumes:
+      - ./translation-api:/app
+    working_dir: /app
+    command: ["node", "index.js"]
+
+  translation-worker:
+    build: ./translation-worker
+    container_name: translation-worker
+    depends_on:
+      - rabbitmq
+    volumes:
+      - ./translation-worker:/app
+    working_dir: /app
+    env_file:
+      - ./translation-worker/.env
+    command: ["node", "index.js"]
