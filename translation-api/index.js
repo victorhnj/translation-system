@@ -2,24 +2,32 @@ import express from 'express';
 import amqp from 'amqplib';
 import db from './db/database.js';
 import dotenv from 'dotenv';
+import { randomUUID } from 'crypto';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const QUEUE = 'translation_queue';
+const QUEUE = process.env.QUEUE_NAME || 'translation_queue';
 
 app.use(express.json());
 
-// Conexão com RabbitMQ
 let channel;
+
+// Conexão com RabbitMQ
 async function connectToRabbitMQ() {
-  const connection = await amqp.connect('amqp://rabbitmq');
-  channel = await connection.createChannel();
-  await channel.assertQueue(QUEUE);
-  console.log('[API] Conectado ao RabbitMQ');
+  try {
+    const connection = await amqp.connect(process.env.RABBITMQ_URL || 'amqp://rabbitmq');
+    channel = await connection.createChannel();
+    await channel.assertQueue(QUEUE);
+    console.log('[API] Conectado ao RabbitMQ');
+  } catch (error) {
+    console.error('[API] Erro ao conectar ao RabbitMQ:', error.message);
+    process.exit(1);
+  }
 }
-connectToRabbitMQ().catch(console.error);
+
+connectToRabbitMQ();
 
 // Endpoint para solicitar tradução
 app.post('/translate', async (req, res) => {
@@ -29,7 +37,7 @@ app.post('/translate', async (req, res) => {
     return res.status(400).json({ error: 'Parâmetros obrigatórios: text, targetLanguage' });
   }
 
-  const requestId = crypto.randomUUID();
+  const requestId = randomUUID();
 
   try {
     // Inserir no banco
@@ -54,13 +62,18 @@ app.post('/translate', async (req, res) => {
 app.get('/translate/:requestId', (req, res) => {
   const { requestId } = req.params;
 
-  const row = db.prepare('SELECT * FROM translations WHERE requestId = ?').get(requestId);
+  try {
+    const row = db.prepare('SELECT * FROM translations WHERE requestId = ?').get(requestId);
 
-  if (!row) {
-    return res.status(404).json({ error: 'requestId não encontrado' });
+    if (!row) {
+      return res.status(404).json({ error: 'requestId não encontrado' });
+    }
+
+    return res.json(row);
+  } catch (error) {
+    console.error('[API] Erro ao buscar tradução:', error.message);
+    return res.status(500).json({ error: 'Erro interno no servidor' });
   }
-
-  return res.json(row);
 });
 
 app.listen(PORT, () => {
