@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   rabbitmq:
     image: rabbitmq:3-management
@@ -10,11 +8,15 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
-      
-    deploy:
-      resources:
-        limits:
-          memory: 1024M                          # Aumenta o limite de memória (1GB)
+    mem_limit: 256m
+    cpus: 0.5
+    healthcheck:
+      test: ['CMD', 'rabbitmqctl', 'status']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - api
 
   translation-api:
     build: ./translation-api
@@ -22,20 +24,28 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
     volumes:
       - ./translation-api:/app
-    working_dir: /app
-    command: ["node", "index.js"]
+      - /app/node_modules
+    networks:
+      - api
 
   translation-worker:
     build: ./translation-worker
     container_name: translation-worker
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
     volumes:
       - ./translation-worker:/app
-    working_dir: /app
+      - /app/node_modules
     env_file:
       - ./translation-worker/.env
-    command: ["node", "index.js"]
+    networks:
+      - api    
+
+networks:
+  api:
+    driver: bridge
